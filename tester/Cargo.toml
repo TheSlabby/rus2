@@ -1,0 +1,8 @@
+[package]
+name = "tester"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rus2 = { path = "../crates/rus2" }
+tokio.workspace = true

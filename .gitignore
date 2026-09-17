@@ -1,0 +1,14 @@
+# Build artifacts — one shared target/ for the whole workspace
+/target
+
+# Editor / OS noise
+*.swp
+*.swo
+.DS_Store
+
+# Perf & debug output you'll generate later
+perf.data*
+flamegraph.svg
+
+# Personal AI-assistant notes, not part of the project
+CLAUDE.md
