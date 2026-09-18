@@ -3,29 +3,21 @@ use tokio::net::UdpSocket;
 use serde::{Serialize, Deserialize};
 use serde_json;
 use std::time::{SystemTime, UNIX_EPOCH};
+use crate::wire::{BeaconMessage, Packet};
 
 use tokio::time::Duration;
 use crate::node::Node;
 
 
-#[derive(Debug, Serialize, Deserialize)]
-struct BeaconMessage {
-    sender_name: String,
-    epoch_ns: u64
-}
 
 pub struct Beacon {
     node: Arc<Node>,
-    socket: UdpSocket
+    socket: Arc<UdpSocket>
 }
 
 impl Beacon {
-    pub async fn new(n: Arc<Node>) -> io::Result<Beacon> {
-        // setup udp socket
-        let s = UdpSocket::bind("0.0.0.0:5060").await?;
-        s.set_broadcast(true)?;
-
-        Ok(Beacon{node: n, socket: s})
+    pub fn new(n: Arc<Node>, s: Arc<UdpSocket>) -> Beacon {
+        Beacon{node: n, socket: s}
     }
 
     pub async fn run(self) -> io::Result<()> {
@@ -43,9 +35,10 @@ impl Beacon {
                             sender_name: self.node.name().to_string(), // "test".to_string(),
                             epoch_ns: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64
                         };
+                        let packet = Packet::Beacon(p);
 
                         // serialize packet
-                        let bytes = match serde_json::to_vec(&p) {
+                        let bytes = match serde_json::to_vec(&packet) {
                             Ok(b) => b,
                             Err(e) => { eprintln!("encode: {}", e); continue; }
                         };
@@ -58,10 +51,11 @@ impl Beacon {
                                 println!("GOT DATA!");
 
                                 // try to deserialize
-                                match serde_json::from_slice::<BeaconMessage>(&buf[..n]) {
-                                    Ok(msg) => {
+                                match serde_json::from_slice::<Packet>(&buf[..n]) {
+                                    Ok(Packet::Beacon(msg)) => {
                                         self.node.process_beacon_heartbeat(&msg.sender_name, &addr).await;
                                     },
+                                    Ok(Packet::Data(msg)) => {},
                                     Err(e) => { eprintln!("error: {e}"); }
                                 }
                             },

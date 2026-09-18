@@ -1,8 +1,11 @@
 use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use serde::Serialize;
 use tokio::sync::Mutex;
+use tokio::net::UdpSocket;
 use tokio::time::Instant;
+use crate::wire::{DataMessage, Packet};
 use crate::beacon;
 
 pub struct Peer {
@@ -13,7 +16,8 @@ pub struct Peer {
 
 pub struct Node {
     name: String,
-    peers: Mutex<Vec<Peer>>
+    peers: Mutex<Vec<Peer>>,
+    socket: Arc<UdpSocket>
 }
 
 pub struct NodeBuilder {
@@ -56,18 +60,38 @@ impl Node {
     }
 
     
+    // TODO: make topics support multiple types (not just T)
+    pub async fn publish<T: Serialize>(&self, topic: &str, data: &T) -> io::Result<()> {
+        let s: &Arc<UdpSocket> = &self.socket;
+        let payload_bytes = serde_json::to_vec(data)?;
+        // wrap in packet
+        let packet = Packet::Data(DataMessage{topic: topic.to_string(), payload: payload_bytes});
+        let bytes = serde_json::to_vec(&packet)?;
+        for peer in self.peers.lock().await.iter() {
+            s.send_to(&bytes, peer.addr).await?;
+        }
+
+        Ok(())
+    }
+
+    
 }
 
 impl NodeBuilder {
     pub async fn spawn(self) -> io::Result<Arc<Node>> {
+        // create socket for the node & the beacon
+        let socket = Arc::new(UdpSocket::bind("0.0.0.0:5060").await?);
+        socket.set_broadcast(true)?;
+
         let n = Arc::new(Node{
             name: self.name.to_string(),
-            peers: Mutex::new(Vec::new())
+            peers: Mutex::new(Vec::new()),
+            socket: Arc::clone(&socket)
         });
 
         // create our beacon
         let beacon_node = Arc::clone(&n);
-        let b = beacon::Beacon::new(beacon_node).await?;
+        let b = beacon::Beacon::new(beacon_node, Arc::clone(&socket));
         b.run().await?;
 
         // tokio timers etc
