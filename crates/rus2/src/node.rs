@@ -33,6 +33,24 @@ impl Node {
 
     pub async fn process_beacon_heartbeat(&self, name: &str, addr: &SocketAddr) -> io::Result<()> {
         println!("processing this heartbeat from {} with name: {}", addr.to_string(), name);
+        let mut found = false;
+        let mut peers_locked = self.peers.lock().await;
+        for peer in peers_locked.iter_mut() {
+            if peer.name == name && peer.addr == *addr {
+                found = true;
+                peer.last_seen = Instant::now();
+                break;
+            }
+        }
+
+        if !found {
+            let peer = Peer {
+                name: name.to_string(),
+                addr: *addr,
+                last_seen: Instant::now()
+            };
+            peers_locked.push(peer);
+        }
 
         Ok(())
     }

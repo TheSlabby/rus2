@@ -23,7 +23,7 @@ impl Beacon {
     pub async fn new(n: Arc<Node>) -> io::Result<Beacon> {
         // setup udp socket
         let s = UdpSocket::bind("0.0.0.0:5060").await?;
-        s.set_broadcast(true);
+        s.set_broadcast(true)?;
 
         Ok(Beacon{node: n, socket: s})
     }
