@@ -7,7 +7,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("hello");
     hello_world().await?;
 
-    let node = node::Node::builder("test").spawn().await?;
+    let node = node::Node::builder("TEST_NODE").spawn().await?;
 
     // let b = beacon::Beacon::new(node);
 

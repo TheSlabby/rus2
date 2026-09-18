@@ -1,9 +1,18 @@
 use std::{io, sync::Arc};
 use tokio::net::UdpSocket;
+use serde::{Serialize, Deserialize};
+use serde_json;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use tokio::time::Duration;
 use crate::node::Node;
 
+
+#[derive(Debug, Serialize, Deserialize)]
+struct BeaconMessage {
+    sender_name: String,
+    epoch_ns: u64
+}
 
 pub struct Beacon {
     node: Arc<Node>,
@@ -13,7 +22,7 @@ pub struct Beacon {
 impl Beacon {
     pub async fn new(n: Arc<Node>) -> io::Result<Beacon> {
         // setup udp socket
-        let s = UdpSocket::bind("0.0.0.0:5061").await?;
+        let s = UdpSocket::bind("0.0.0.0:5060").await?;
         s.set_broadcast(true);
 
         Ok(Beacon{node: n, socket: s})
@@ -21,13 +30,47 @@ impl Beacon {
 
     pub async fn run(self) -> io::Result<()> {
 
-        // loop
+        // send loop
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(Duration::from_secs(1));
+            let mut buf = [0u8; 1024];
             loop {
-                ticker.tick().await;
-                println!("TICK!");
-                self.socket.send_to(b"hello, world\r\n", "127.0.0.1:5060").await;
+                tokio::select! {
+                    _ = ticker.tick() => {
+                        println!("TICK!");
+                        // let packet = BeaconMessage{sender_name: self.node.}
+                        let p = BeaconMessage{
+                            sender_name: self.node.name().to_string(), // "test".to_string(),
+                            epoch_ns: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64
+                        };
+
+                        // serialize packet
+                        let bytes = match serde_json::to_vec(&p) {
+                            Ok(b) => b,
+                            Err(e) => { eprintln!("encode: {}", e); continue; }
+                        };
+
+                        self.socket.send_to(&bytes, "255.255.255.255:5060").await;
+                    }
+                    res = self.socket.recv_from(&mut buf) => {
+                        match (res) {
+                            Ok((n, addr)) => {
+                                println!("GOT DATA!");
+
+                                // try to deserialize
+                                match serde_json::from_slice::<BeaconMessage>(&buf[..n]) {
+                                    Ok(msg) => {
+                                        self.node.process_beacon_heartbeat(&msg.sender_name, &addr).await;
+                                    },
+                                    Err(e) => { eprintln!("error: {e}"); }
+                                }
+                            },
+                            Err(e) => {
+                                eprintln!("error: {e}");
+                            }
+                        }
+                    }
+                }
             }
         });
 
@@ -37,15 +80,6 @@ impl Beacon {
 
 pub async fn hello_world() -> io::Result<()> {
     println!("HELLO BR0");
-
-    Ok(())
-}
-
-
-pub async fn run() -> io::Result<()> {
-    let sock = UdpSocket::bind("0.0.0.0:7446").await?;
-    sock.set_broadcast(true)?;
-    let n = sock.send_to(b"hello", "255.255.255.255:7447").await?;
 
     Ok(())
 }
