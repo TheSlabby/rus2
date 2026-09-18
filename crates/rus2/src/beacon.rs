@@ -55,7 +55,9 @@ impl Beacon {
                                     Ok(Packet::Beacon(msg)) => {
                                         self.node.process_beacon_heartbeat(&msg.sender_name, &addr).await;
                                     },
-                                    Ok(Packet::Data(msg)) => {},
+                                    Ok(Packet::Data(msg)) => {
+                                        self.node.process_data_message(&msg).await;
+                                    },
                                     Err(e) => { eprintln!("error: {e}"); }
                                 }
                             },

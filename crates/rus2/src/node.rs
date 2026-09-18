@@ -59,6 +59,12 @@ impl Node {
         Ok(())
     }
 
+    pub async fn process_data_message(&self, data: &DataMessage) -> io::Result<()> {
+        println!("GOT DATA MESSAGE on topic: {}", data.topic);
+
+        Ok(())
+    }
+
     
     // TODO: make topics support multiple types (not just T)
     pub async fn publish<T: Serialize>(&self, topic: &str, data: &T) -> io::Result<()> {
