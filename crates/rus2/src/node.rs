@@ -1,7 +1,7 @@
 use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tokio::net::UdpSocket;
 use tokio::time::Instant;
@@ -14,10 +14,15 @@ pub struct Peer {
     pub last_seen: Instant
 }
 
+pub trait Callback: Send + Sync {
+    fn call(&self, payload: &[u8]);
+}
+
 pub struct Node {
     name: String,
     peers: Mutex<Vec<Peer>>,
-    socket: Arc<UdpSocket>
+    socket: Arc<UdpSocket>,
+    callbacks: Mutex<Vec<(String, Arc<dyn Callback>)>>
 }
 
 pub struct NodeBuilder {
@@ -62,6 +67,14 @@ impl Node {
     pub async fn process_data_message(&self, data: &DataMessage) -> io::Result<()> {
         println!("GOT DATA MESSAGE on topic: {}", data.topic);
 
+        let callbacks = self.callbacks.lock().await;
+        for callback in callbacks.iter() {
+            if callback.0 == data.topic {
+                callback.1.call(&data.payload);
+            }
+        }
+
+
         Ok(())
     }
 
@@ -80,6 +93,14 @@ impl Node {
         Ok(())
     }
 
+    pub async fn subscribe(&self, topic: &str, callback: Arc<dyn Callback>) -> io::Result<()> {
+        let mut callbacks = self.callbacks.lock().await;
+        let arc_clone = callback.clone();
+        callbacks.push((topic.to_string(), arc_clone));
+
+        Ok(())
+    }
+
     
 }
 
@@ -92,7 +113,8 @@ impl NodeBuilder {
         let n = Arc::new(Node{
             name: self.name.to_string(),
             peers: Mutex::new(Vec::new()),
-            socket: Arc::clone(&socket)
+            socket: Arc::clone(&socket),
+            callbacks: Mutex::new(Vec::new())
         });
 
         // create our beacon
