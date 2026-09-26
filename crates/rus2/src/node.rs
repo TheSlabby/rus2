@@ -1,6 +1,7 @@
 use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tokio::net::UdpSocket;
@@ -14,15 +15,11 @@ pub struct Peer {
     pub last_seen: Instant
 }
 
-pub trait Callback: Send + Sync {
-    fn call(&self, payload: &[u8]);
-}
-
 pub struct Node {
     name: String,
     peers: Mutex<Vec<Peer>>,
     socket: Arc<UdpSocket>,
-    callbacks: Mutex<Vec<(String, Arc<dyn Callback>)>>
+    callbacks: Mutex<Vec<(String, Arc<dyn Fn(&[u8]) + Send + Sync + 'static>)>>
 }
 
 pub struct NodeBuilder {
@@ -70,7 +67,7 @@ impl Node {
         let callbacks = self.callbacks.lock().await;
         for callback in callbacks.iter() {
             if callback.0 == data.topic {
-                callback.1.call(&data.payload);
+                callback.1(&data.payload);
             }
         }
 
@@ -93,10 +90,23 @@ impl Node {
         Ok(())
     }
 
-    pub async fn subscribe(&self, topic: &str, callback: Arc<dyn Callback>) -> io::Result<()> {
+    pub async fn add_callback(&self, topic: &str, callback: Arc<dyn Fn(&[u8]) + Sync + Send + 'static>) -> io::Result<()> {
         let mut callbacks = self.callbacks.lock().await;
-        let arc_clone = callback.clone();
-        callbacks.push((topic.to_string(), arc_clone));
+        callbacks.push((topic.to_string(), callback));
+
+        Ok(())
+    }
+
+    pub async fn subscribe<T: DeserializeOwned + 'static>(&self, topic: &str, handler: Arc<dyn Fn(T) + Sync + Send + 'static>) -> io::Result<()> {
+        // callback that tries to parse in T format
+        self.add_callback(topic, Arc::new(move |message| {
+            match serde_json::from_slice::<T>(message) {
+                Ok(value) => {
+                    handler(value)
+                },
+                Err(e) => eprintln!("Error: {e}")
+            }
+        })).await?;
 
         Ok(())
     }
