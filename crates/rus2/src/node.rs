@@ -1,6 +1,7 @@
 use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
@@ -8,6 +9,8 @@ use tokio::net::UdpSocket;
 use tokio::time::Instant;
 use crate::wire::{DataMessage, Packet};
 use crate::beacon;
+
+const MAX_PEER_AGE: Duration = Duration::from_secs(5);
 
 pub struct Peer {
     pub name: String,
@@ -36,8 +39,15 @@ impl Node {
     // getters
     pub fn name(&self) -> &str { &self.name }
 
+    pub async fn check_stale_peers(&self){
+        let mut peers = self.peers.lock().await;
 
-    pub async fn process_beacon_heartbeat(&self, name: &str, addr: &SocketAddr) -> io::Result<()> {
+        // remove old peers
+        peers.retain(|p| p.last_seen.elapsed() < MAX_PEER_AGE);
+    }
+
+
+    pub async fn process_beacon_heartbeat(&self, name: &str, addr: &SocketAddr) {
         println!("processing this heartbeat from {} with name: {}", addr.to_string(), name);
         let mut found = false;
         let mut peers_locked = self.peers.lock().await;
@@ -57,8 +67,6 @@ impl Node {
             };
             peers_locked.push(peer);
         }
-
-        Ok(())
     }
 
     pub async fn process_data_message(&self, data: &DataMessage) -> io::Result<()> {
