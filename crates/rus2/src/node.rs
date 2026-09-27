@@ -79,10 +79,10 @@ impl Node {
     // TODO: make topics support multiple types (not just T)
     pub async fn publish<T: Serialize>(&self, topic: &str, data: &T) -> io::Result<()> {
         let s: &Arc<UdpSocket> = &self.socket;
-        let payload_bytes = serde_json::to_vec(data)?;
+        let payload_bytes = rmp_serde::to_vec_named(data).map_err(io::Error::other)?;
         // wrap in packet
         let packet = Packet::Data(DataMessage{topic: topic.to_string(), payload: payload_bytes});
-        let bytes = serde_json::to_vec(&packet)?;
+        let bytes = rmp_serde::to_vec_named(&packet).map_err(io::Error::other)?;
         for peer in self.peers.lock().await.iter() {
             s.send_to(&bytes, peer.addr).await?;
         }
@@ -100,7 +100,7 @@ impl Node {
     pub async fn subscribe<T: DeserializeOwned + 'static>(&self, topic: &str, handler: Arc<dyn Fn(T) + Sync + Send + 'static>) -> io::Result<()> {
         // callback that tries to parse in T format
         self.add_callback(topic, Arc::new(move |message| {
-            match serde_json::from_slice::<T>(message) {
+            match rmp_serde::from_slice::<T>(message) {
                 Ok(value) => {
                     handler(value)
                 },

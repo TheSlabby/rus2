@@ -9,6 +9,7 @@ pub struct BeaconMessage {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DataMessage {
     pub topic: String,
+    #[serde(with = "serde_bytes")]
     pub payload: Vec<u8>
 }
 

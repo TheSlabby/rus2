@@ -1,7 +1,6 @@
 use std::{io, sync::Arc};
 use tokio::net::UdpSocket;
 use serde::{Serialize, Deserialize};
-use serde_json;
 use std::time::{SystemTime, UNIX_EPOCH};
 use crate::wire::{BeaconMessage, Packet};
 
@@ -25,7 +24,7 @@ impl Beacon {
         // send loop
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(Duration::from_secs(1));
-            let mut buf = [0u8; 1024];
+            let mut buf = [0u8; 65535];
             loop {
                 tokio::select! {
                     _ = ticker.tick() => {
@@ -38,7 +37,7 @@ impl Beacon {
                         let packet = Packet::Beacon(p);
 
                         // serialize packet
-                        let bytes = match serde_json::to_vec(&packet) {
+                        let bytes = match rmp_serde::to_vec_named(&packet) {
                             Ok(b) => b,
                             Err(e) => { eprintln!("encode: {}", e); continue; }
                         };
@@ -51,7 +50,7 @@ impl Beacon {
                                 println!("GOT DATA!");
 
                                 // try to deserialize
-                                match serde_json::from_slice::<Packet>(&buf[..n]) {
+                                match rmp_serde::from_slice::<Packet>(&buf[..n]) {
                                     Ok(Packet::Beacon(msg)) => {
                                         self.node.process_beacon_heartbeat(&msg.sender_name, &addr).await;
                                     },

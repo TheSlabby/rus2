@@ -6,4 +6,5 @@ edition = "2024"
 [dependencies]
 tokio.workspace = true
 serde.workspace = true
-serde_json.workspace = true
+rmp-serde = "1"
+serde_bytes = "0.11"
